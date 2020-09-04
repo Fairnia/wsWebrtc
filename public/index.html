@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title></title>
+  </head>
+  <body>
+    <div class="usernameForm" style="
+      margin: 20px auto;
+      font-size: 25px;
+      max-width: 300px;
+      display: flex;
+      justify-content: center;
+      flex-direction: column;">
+      <label >Username:</label><br>
+      <input type="text" id="username" value="Human"><br>
+      <button type="submit" onclick="connect()">Submit</button>
+    </div>
+
+    <script type="text/javascript">
+      document.getElementById("username").select()
+    // Get our hostname
+    var myHostname = window.location.hostname;
+    if (!myHostname) {
+    myHostname = "localhost";
+    }
+    console.log("Hostname: " + myHostname);
+
+    function connect() {
+      var serverUrl;
+      var scheme = "ws";
+      if (document.location.protocol === "https:") {
+        scheme += "s";
+      }
+      serverUrl = scheme + "://" + myHostname + ":4500";
+
+      console.log(`Connecting to server: ${serverUrl}`);
+      connection = new WebSocket(serverUrl, "json");
+
+      connection.onerror = function(evt) {
+        console.dir(evt);
+      }
+    }
+    </script>
+  </body>
+</html>
