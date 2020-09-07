@@ -13,34 +13,77 @@
       justify-content: center;
       flex-direction: column;">
       <label >Username:</label><br>
+      //make sure usernames can only be letters and numbers (maybe just use text replace)
       <input type="text" id="username" value="Human"><br>
-      <button type="submit" onclick="connect()">Submit</button>
+      <button onclick="connect()">Connect</button>
+      <button onclick="disconnect()">Disconnect</button>
     </div>
 
     <script type="text/javascript">
       document.getElementById("username").select()
-    // Get our hostname
-    var myHostname = window.location.hostname;
-    if (!myHostname) {
-    myHostname = "localhost";
-    }
-    console.log("Hostname: " + myHostname);
-
-    function connect() {
-      var serverUrl;
-      var scheme = "ws";
-      if (document.location.protocol === "https:") {
-        scheme += "s";
+      // Get our hostname
+      var myHostname = window.location.hostname;
+      if (!myHostname) {
+      myHostname = "localhost";
       }
-      serverUrl = scheme + "://" + myHostname + ":4500";
+      console.log("Hostname: " + myHostname);
 
-      console.log(`Connecting to server: ${serverUrl}`);
-      connection = new WebSocket(serverUrl, "json");
+      // Need to build a function that checks local storage if username has been selected
+      // and to give the user an option to change their username
 
-      connection.onerror = function(evt) {
-        console.dir(evt);
+      function connect() {
+        var serverUrl;
+        var scheme = "ws";
+        if (document.location.protocol === "https:") {
+          scheme += "s";
+        }
+        serverUrl = scheme + "://" + myHostname + ":4500";
+
+        console.log(`Connecting to server: ${serverUrl}`);
+        connection = new WebSocket(serverUrl, "json");
+
+        connection.onerror = function(evt) {
+          console.dir(evt);
+        }
+
+        connection.onmessage = function(evt) {
+          var msg = JSON.parse(evt.data);
+          console.log("Message received: ");
+          console.dir(msg);
+
+          switch(msg.type) {
+            case "match":
+              console.log("user1 is ", msg.user1);
+              console.log("user2 is ", msg.user2);
+              break;
+
+
+            // Unknown message; output to console for debugging.
+            default:
+              console.log("Unknown message received:");
+              console.log('unknown message on refresh');
+              console.dir(msg, { depth: null });
+              //log_error(msg);
+            }
+          };
       }
-    }
+
+      function handleHangUpMsg(msg) {
+        log("*** Received hang up notification from other peer");
+        //close video call is for webrtc
+        closeVideoCall();
+      }
+
+      function hangUpCall() {
+        //close video call is for webrtc
+        closeVideoCall();
+
+        sendToServer({
+          name: myID,
+          target: targetID,
+          type: "hang-up"
+        });
+      }
     </script>
   </body>
 </html>
