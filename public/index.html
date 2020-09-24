@@ -13,14 +13,26 @@
       justify-content: center;
       flex-direction: column;">
       <label >Username:</label><br>
-      //make sure usernames can only be letters and numbers (maybe just use text replace)
-      <input type="text" id="username" value="Human"><br>
+      <!-- make sure usernames can only be letters and numbers (maybe just use text replace) -->
+      <input type="text" id="usernameInput" value="Human"><br>
       <button onclick="connect()">Connect</button>
       <button onclick="disconnect()">Disconnect</button>
+      <div style='padding-top:9px;'>
+        <div id="newPartner">
+          Hey <span id='userName'></span>, meet <span id='partnerName'></span>
+        </div>
+        <div id="findingPartner">
+          Finding you a new partner...
+        </div>
+        <div id="userId"></div>
+        <div class="prevPartners">
+          Previous users: <span id='prevUsersArray'></span>
+        </div>
+      </div>
     </div>
 
     <script type="text/javascript">
-      document.getElementById("username").select()
+      document.getElementById("usernameInput").select()
       // Get our hostname
       var myHostname = window.location.hostname;
       if (!myHostname) {
@@ -30,8 +42,21 @@
 
       // Need to build a function that checks local storage if username has been selected
       // and to give the user an option to change their username
+      //populate the username and partnername fields
+
+      var newPartnerel = document.getElementById('newPartner');
+      newPartnerel.style.display = "none";
+      var findingPartnerel = document.getElementById('findingPartner');
+      findingPartnerel.style.display = "none";
+      var userIdel = document.getElementById('userId');
+      var prevUsersArrayel = document.getElementById('prevUsersArray');
 
       function connect() {
+        var usernameInput = document.getElementById('usernameInput').value;
+        var username = document.getElementById('userName');
+        var partnerName = document.getElementById('partnerName');
+        var myId;
+        var partnerId;
         var serverUrl;
         var scheme = "ws";
         if (document.location.protocol === "https:") {
@@ -41,23 +66,61 @@
 
         console.log(`Connecting to server: ${serverUrl}`);
         connection = new WebSocket(serverUrl, "json");
+        function sendToServer(msg) {
+          var msgJSON = JSON.stringify(msg);
+
+          console.log("Sending '" + msg.type + "' message: " + msgJSON);
+          connection.send(msgJSON);
+        }
 
         connection.onerror = function(evt) {
           console.dir(evt);
         }
-
+        connection.onopen = function(evt) {
+          //send username asap, once connection as been made
+          sendToServer({
+            text: usernameInput,
+            type: "username"
+          });
+        };
         connection.onmessage = function(evt) {
           var msg = JSON.parse(evt.data);
           console.log("Message received: ");
           console.dir(msg);
 
           switch(msg.type) {
-            case "match":
+            case "id":
+              myId = msg.id
+              userIdel.innerText = myId;
+              console.log('id');
+              break;
+            case "matched":
+              console.log('matched!')
               console.log("user1 is ", msg.user1);
               console.log("user2 is ", msg.user2);
+              if(msg.user1.id === myId){
+                partnerId = msg.user2.id
+                username.innerText = msg.user1.username;
+                partnerName.innerText = msg.user2.username
+                prevUsersArrayel.innerText = msg.user1.prevMatched
+              }else{
+                partnerId = msg.user1.id
+                username.innerText = msg.user2.username;
+                partnerName.innerText = msg.user1.username
+                prevUsersArrayel.innerText = msg.user2.prevMatched
+              }
+              findingPartnerel.style.display = "none"
+              newPartnerel.style.display = "block"
+              //user1 will always disconnect
+              setTimeout(()=>{
+                findNewPartner()
+              },3000)
               break;
-
-
+            case "matching":
+              partnerId = '';
+              findingPartnerel.style.display = "block"
+              newPartnerel.style.display = "none"
+            break;
             // Unknown message; output to console for debugging.
             default:
               console.log("Unknown message received:");
@@ -66,24 +129,37 @@
               //log_error(msg);
             }
           };
+          function findNewPartner(){
+            sendToServer({
+              name: myId,
+              currentPartnerId: partnerId,
+              type: "find-new-parnter"
+            });
+            partnerId = null;
+          }
       }
 
       function handleHangUpMsg(msg) {
-        log("*** Received hang up notification from other peer");
+        console.log("*** Received hang up notification from other peer");
         //close video call is for webrtc
-        closeVideoCall();
+        //closeVideoCall();
       }
 
-      function hangUpCall() {
+      function disconnect() {
         //close video call is for webrtc
-        closeVideoCall();
+       closeVideoCall();
+       window.location.href = "/thankyou.html";
+       connection.close();
 
-        sendToServer({
-          name: myID,
-          target: targetID,
-          type: "hang-up"
-        });
+       //don't think I'll need the hang-up send to server bc it'll be here
+       //might need to match ip address or device id to id in order to make sure there's no hacking into other people's "accounts"
+        // sendToServer({
+        //   name: myID,
+        //   target: partnerId,
+        //   type: "hang-up"
+        // });
       }
+
     </script>
   </body>
 </html>

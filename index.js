@@ -1,3 +1,11 @@
+//next on the agenda is setting testing out multiple users at the same time
+// setting a timeout to disconnect users done!
+// future problems
+// find a way to protect myself from bots
+
+// current Problems
+// it's possible for users to get stuck on a certain pairing
+// it's possible for a matching to take place during another matching ** figure out why!
 
 "use strict";
 var express = require('express');
@@ -19,7 +27,11 @@ var waitingList = [];
 var userIds = [];
 
 function connect(user1, user2){
+
+  //remove users from waitingList
+  waitingList = waitingList.filter(human => human.userId !== user1.userId && human.userId !== user2.userId);
   //make sure users are still active
+  console.log('hello from connect, here is waitingList', waitingList)
   if(currentUsers.indexOf(user1) === -1){
     pairUsers(user2);
     console.log('not in currentUsers user1')
@@ -38,52 +50,85 @@ function connect(user1, user2){
   user2.noNewMatches = false;
 
   var matchMsg = {
-    type:"match",
-    user1: user1.userId,
-    user2: user2.userId
+    type:"matched",
+    user1:{
+      id: user1.userId,
+      username: user1.username,
+      prevMatched: user1.prevMatched
+
+    },
+    user2:{
+      id: user2.userId,
+      username: user2.username,
+      prevMatched: user2.prevMatched
+    }
   }
-  var stringyMsg = JSON.stringify(matchMsg);
-  user1.sendUTF(stringyMsg);
-  user2.sendUTF(stringyMsg);
+  var stringyMatchMsg = JSON.stringify(matchMsg);
+  user1.sendUTF(stringyMatchMsg);
+  user2.sendUTF(stringyMatchMsg);
   console.log('hello from connect', matchMsg.user1, matchMsg.user2)
 }
 
 function reEnterPairing(connection){
-  console.log('hello from not previously matched ');
+  console.log('moved into reEnterPairing ', connection.userId);
   setTimeout(function(){
     pairUsers(connection);
-  }, 1500);
+  }, 2500);
 }
 
 //pair users
 function pairUsers(connection){
+  var matchingMsg= {
+    type:"matching"
+  }
+  var stringyMatchingMsg = JSON.stringify(matchingMsg);
+  connection.sendUTF(stringyMatchingMsg);
   //might need to move currentPartner = '' to when disconnected
   connection.currentPartner = '';
   console.log('hello from pairUsers ', connection.userId);
   waitingList.push(connection);
-
+  var waitingListIds = [];
+  waitingList.forEach(user =>{
+    var consolelogid = user.userId;
+    waitingListIds.push(consolelogid);
+  })
   if(waitingList.length > 1){
-    if(connection.noNewMatches === true && connection.currentPartner !== ''){
+    console.log('connection.noNewMatches ', connection.noNewMatches)
+    console.log('connection.currentPartner ', connection.currentPartner)
+    if(connection.noNewMatches === true && connection.currentPartner === ''){
       waitingList = waitingList.filter(human => human.userId !== connection.userId)
-      var partner = waitingList.shift();
+      console.log('hello from no new matches ', waitingList)
+      //waitingList length 1
+      console.log('waiting list length one no new matching ', waitingList)
+      if(waitingList.length === 1){
+        var partner = waitingList.shift();
+      }
+      if(waitingList.length > 1){
+        //find the id of the last in prev matches and make sure that isn't the one chosen
+      }
+      console.log('hello from no new matches')
       connect(connection, partner)
+      return;
     }
     waitingList.forEach(function loop(user, i){
       if(loop.stop){
+        console.log('hello from loop.stop')
         return;
       }
       if(user.userId === connection.userId){
+        console.log('same as connection.id returned')
         return;
       }
-      if(connection.prevMatched.indexOf(user) == -1 && connection.currentPartner !== '' && user.currentPartner !== ''){
-        console.log('hello from not previously matched ');
+      console.log('userIDs ', waitingListIds)
+      if(connection.prevMatched.indexOf(user.userId) === -1 && connection.currentPartner === '' && user.currentPartner === ''){
+        console.log('hello from not previously matched waitingList' );
         connect(connection, user);
-        waitingList = waitingList.filter(human => human.userId !== user.userId || human.userId !== connection.userId);
         loop.stop = true;
         return;
       }
       connection.noNewMatches = true;
       waitingList = waitingList.filter(human => human.userId !== connection.userId);
+      console.log('made it to no new matches!')
       reEnterPairing(connection);
 
     });
@@ -104,7 +149,7 @@ var wsServer = new WebSocketServer({
 });
 
 if (!wsServer) {
-  log("ERROR: Unable to create WebSocket server!");
+  console.log("ERROR: Unable to create WebSocket server!");
 }
 
 //New user trying to connect to server
@@ -113,7 +158,7 @@ wsServer.on('request', function(request) {
   //will need this for blocked users
   if (!originIsAllowed(request.origin)) {
     request.reject();
-    log("Connection from " + request.origin + " rejected.");
+    console.log("Connection from " + request.origin + " rejected.");
     return;
   }
 
@@ -124,6 +169,12 @@ wsServer.on('request', function(request) {
 
   connection.matched = false;
   connection.userId = nextID;
+  var idMsg = {
+    type:"id",
+    id: connection.userId
+  }
+  var stringyIdMsg = JSON.stringify(idMsg);
+  connection.sendUTF(stringyIdMsg);
   connection.prevMatched = [];
   connection.currentPartner = '';
   connection.noNewMatches = false;
@@ -133,16 +184,15 @@ wsServer.on('request', function(request) {
   console.log("client id from array " + userIds);
 
   nextID++;
-  pairUsers(connection);
 
 
   connection.on('message', function(message) {
     if (message.type === 'utf8') {
-      log("Received Message: " + message.utf8Data);
+      console.log("Received Message: " + message.utf8Data);
 
       // Process incoming data.
       var msg = JSON.parse(message.utf8Data);
-      var connect = getConnectionForID(msg.id);
+      //var connect = getConnectionForID(msg.id);
 
       // Take a look at the incoming object and act on it based
       // on its type. Unknown message types are passed through,
@@ -154,32 +204,52 @@ wsServer.on('request', function(request) {
         case "username":
         //sanitize username with this
         msg.text = msg.text.replace(/(<([^>]+)>)/ig, "");
+        connection.username = msg.text;
+        //make a name checker for blocked words
+        pairUsers(connection);
+        break;
+        case "find-new-parnter":
+        currentUsers.forEach((human, i) => {
+          if(human.userId === connection.currentPartnerId || human.userId === connection.userId){
+            human.currentPartner = '';
+            pairUsers(human);
+          }
+        });
         break;
         case "hang-up":
-        //this means they need to be put back into pairUsers function if they still have a connection
-        //they also need to have to have no currentPartner
+        // this means they need to be put back into pairUsers function if they still have a connection
+        // they also need to have to have no currentPartner
+        // by hanging up the person no longer wants to zengreet so they get taken to the thank you page
+        // the other person we need to make
         msg.name = connect.username;
+        msg.target
         msg.text = msg.text.replace(/(<([^>]+)>)/ig, "");
         break;
 
       }
     }
-  });//connection on message 
+  });//connection on message
 
 // Handle the WebSocket "close" event; this means a user has logged off
 // or has been disconnected.
 connection.on('close', function(reason, description) {
-  // First, remove the connection from the list of connections.
-  currentUsers = currentUsers.filter(function(el, idx, ar) {
-    return el.connected;
-  });
 
-  // get abandonedPartner back in the game
-  currentUsers = currentUsers.map(human =>{
-    if(human.clientId === connection.currentPartner)
-      human.currentPartner = '';
-      pairUsers(human);
-  });
+    // get abandonedPartner back in the game
+    currentUsers.forEach((human, i) => {
+      if(human.userId === connection.currentPartner){
+        human.currentPartner = '';
+        pairUsers(human);
+      }
+    });
+
+    // First, remove the connection from the list of connections.
+    currentUsers = currentUsers.filter(function(el, idx) {
+      if(el.connected){
+        return el.connected;
+      }
+    });
+
+    console.log('currentUsers length', currentUsers)
 
   // Build and output log output for close information.
   var logMessage = "Connection closed: " + connection.remoteAddress + " (" +
