@@ -1,11 +1,13 @@
-//next on the agenda is setting testing out multiple users at the same time
-// setting a timeout to disconnect users done!
+// need to work out banning partners
+// need to work out blocking partners
+// storing names in local host
+// tested out multiple users at the same time -- looking good so far!!
 // future problems
 // find a way to protect myself from bots
 
 // current Problems
-// it's possible for users to get stuck on a certain pairing
-// it's possible for a matching to take place during another matching ** figure out why!
+// it's possible for users to get stuck on a certain pairing - it was and I fixed it!!!
+// it's possible for a matching to take place during another matching ** figure out why! - not getting that problem I think it was because find-new-partner was being called twice
 
 "use strict";
 var express = require('express');
@@ -27,7 +29,6 @@ var waitingList = [];
 var userIds = [];
 
 function connect(user1, user2){
-
   //remove users from waitingList
   waitingList = waitingList.filter(human => human.userId !== user1.userId && human.userId !== user2.userId);
   //make sure users are still active
@@ -69,6 +70,15 @@ function connect(user1, user2){
   console.log('hello from connect', matchMsg.user1, matchMsg.user2)
 }
 
+function checkInWaitingConn(connection){
+  setTimeout(()=>{
+    if(connection.currentPartner === ''){
+      connection.noNewMatches = true;
+      pairUsers(connection);
+    }
+  },3000);
+}
+
 function reEnterPairing(connection){
   console.log('moved into reEnterPairing ', connection.userId);
   setTimeout(function(){
@@ -83,58 +93,68 @@ function pairUsers(connection){
   }
   var stringyMatchingMsg = JSON.stringify(matchingMsg);
   connection.sendUTF(stringyMatchingMsg);
-  //might need to move currentPartner = '' to when disconnected
-  connection.currentPartner = '';
-  console.log('hello from pairUsers ', connection.userId);
-  waitingList.push(connection);
-  var waitingListIds = [];
-  waitingList.forEach(user =>{
-    var consolelogid = user.userId;
-    waitingListIds.push(consolelogid);
-  })
-  if(waitingList.length > 1){
-    console.log('connection.noNewMatches ', connection.noNewMatches)
-    console.log('connection.currentPartner ', connection.currentPartner)
-    if(connection.noNewMatches === true && connection.currentPartner === ''){
-      waitingList = waitingList.filter(human => human.userId !== connection.userId)
-      console.log('hello from no new matches ', waitingList)
-      //waitingList length 1
-      console.log('waiting list length one no new matching ', waitingList)
-      if(waitingList.length === 1){
-        var partner = waitingList.shift();
-      }
-      if(waitingList.length > 1){
-        //find the id of the last in prev matches and make sure that isn't the one chosen
-      }
-      console.log('hello from no new matches')
-      connect(connection, partner)
+
+  if(!connection.noNewMatches){
+    waitingList = [...waitingList, connection];
+  }
+  if(waitingList.length < 1){
+    return;
+  }
+  var partner;
+  waitingList.forEach(function loop(user, i){
+    if(loop.stop){
       return;
     }
-    waitingList.forEach(function loop(user, i){
-      if(loop.stop){
-        console.log('hello from loop.stop')
-        return;
-      }
-      if(user.userId === connection.userId){
-        console.log('same as connection.id returned')
-        return;
-      }
-      console.log('userIDs ', waitingListIds)
-      if(connection.prevMatched.indexOf(user.userId) === -1 && connection.currentPartner === '' && user.currentPartner === ''){
-        console.log('hello from not previously matched waitingList' );
-        connect(connection, user);
-        loop.stop = true;
-        return;
-      }
-      connection.noNewMatches = true;
-      waitingList = waitingList.filter(human => human.userId !== connection.userId);
-      console.log('made it to no new matches!')
-      reEnterPairing(connection);
-
-    });
-
+    if(user.userId === connection.userId){
+      return;
+    }
+    if(connection.prevMatched.indexOf(user.userId) === -1 && connection.currentPartner === '' && user.currentPartner === ''){
+      console.log('hello from not previously matched waitingList' );
+      connection.noNewMatches === false;
+      partner = user;
+      loop.stop = true;
+    }
+  });
+  if(connection.noNewMatches === true && connection.currentPartner === ''){
+    if(waitingList.length === 1){
+      waitingList.forEach((user) => {
+        if(user.userId !== connection.userId){
+          partner = user;
+        }
+      });
+    }
+    if(waitingList.length > 1){
+      var prevMatchedIndices = []
+      waitingList.forEach((user, i) => {
+        if(connection.prevMatched.indexOf(user.userId) !== -1 && user.currentPartner === ''){
+          prevMatchedIndices.push(connection.prevMatched.indexOf(user.userId))
+        }
+      });
+      //get the partner with the min index
+      var matchMinIndex = Math.min(...prevMatchedIndices);
+      var partnerId = connection.prevMatched.filter((prevMatch, i)=> i === matchMinIndex)[0];
+      //remove from previously matched so next time the partner will have a higher index
+      connection.prevMatched = connection.prevMatched.filter((prevMatch, i)=> i !== matchMinIndex)
+      waitingList.forEach( (user,i)=>{
+        if(user.userId === partnerId){
+          partner = user;
+        }
+      })
+    }
+    if(partner){
+      waitingList.forEach( (user,i)=>{
+        if(user.userId === partnerId){
+          user.prevMatched = user.prevMatched.filter((prevMatch, i)=> prevMatch !== connection.userId)
+        }
+      })
+    }
   }
-
+  if(!partner){
+    checkInWaitingConn(connection);
+  }else{
+    waitingList = waitingList.filter(human => human.userId !== connection.userId && human.userId !== partner.userId);
+    connect(connection, partner);
+  }
 }
 
 //create conditions for blocking users here
@@ -210,7 +230,7 @@ wsServer.on('request', function(request) {
         break;
         case "find-new-parnter":
         currentUsers.forEach((human, i) => {
-          if(human.userId === connection.currentPartnerId || human.userId === connection.userId){
+          if(human.userId === connection.userId){
             human.currentPartner = '';
             pairUsers(human);
           }

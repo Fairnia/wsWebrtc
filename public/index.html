@@ -111,10 +111,10 @@
               }
               findingPartnerel.style.display = "none"
               newPartnerel.style.display = "block"
-              //user1 will always disconnect
               setTimeout(()=>{
-                findNewPartner()
+                findNewPartner(myId)
               },3000)
+              //user1 will always disconnect
               break;
             case "matching":
               partnerId = '';
@@ -129,10 +129,9 @@
               //log_error(msg);
             }
           };
-          function findNewPartner(){
+          function findNewPartner(id){
             sendToServer({
               name: myId,
-              currentPartnerId: partnerId,
               type: "find-new-parnter"
             });
             partnerId = null;
