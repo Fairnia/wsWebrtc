@@ -1,7 +1,8 @@
 // need to work out banning partners
 // need to work out blocking partners
-// storing names in local host
+// storing names in local storage
 // tested out multiple users at the same time -- looking good so far!!
+
 // future problems
 // find a way to protect myself from bots
 
@@ -30,6 +31,7 @@ var userIds = [];
 
 function connect(user1, user2){
   //remove users from waitingList
+  //TAKE THIS OUT!!
   waitingList = waitingList.filter(human => human.userId !== user1.userId && human.userId !== user2.userId);
   //make sure users are still active
   console.log('hello from connect, here is waitingList', waitingList)
@@ -72,8 +74,10 @@ function connect(user1, user2){
 
 function checkInWaitingConn(connection){
   setTimeout(()=>{
+    //does it take a stamp of what the currentPartner situation is at the time? or when passed in the function?
     if(connection.currentPartner === ''){
       connection.noNewMatches = true;
+      connection.clown = "it is a clown";
       pairUsers(connection);
     }
   },3000);
@@ -88,26 +92,35 @@ function reEnterPairing(connection){
 
 //pair users
 function pairUsers(connection){
+  if(connection.blocksRec.length > 6){
+    var bannedMsg = {
+      type:"banned"
+    }
+    var stringyBannedMsg = JSON.stringify(bannedMsg);
+    connection.sendUTF(stringyBannedMsg);
+    return
+  }
   var matchingMsg= {
     type:"matching"
   }
   var stringyMatchingMsg = JSON.stringify(matchingMsg);
   connection.sendUTF(stringyMatchingMsg);
 
+  //CHANGE TO index of
   if(!connection.noNewMatches){
     waitingList = [...waitingList, connection];
   }
+
   if(waitingList.length < 1){
     return;
   }
   var partner;
+  // try to find a new partner
   waitingList.forEach(function loop(user, i){
-    if(loop.stop){
-      return;
-    }
-    if(user.userId === connection.userId){
-      return;
-    }
+    if(loop.stop) return;
+
+    if(user.userId === connection.userId) return;
+
     if(connection.prevMatched.indexOf(user.userId) === -1 && connection.currentPartner === '' && user.currentPartner === ''){
       console.log('hello from not previously matched waitingList' );
       connection.noNewMatches === false;
@@ -115,6 +128,7 @@ function pairUsers(connection){
       loop.stop = true;
     }
   });
+  //if can't find new partner, use a previously matched partner
   if(connection.noNewMatches === true && connection.currentPartner === ''){
     if(waitingList.length === 1){
       waitingList.forEach((user) => {
@@ -126,7 +140,7 @@ function pairUsers(connection){
     if(waitingList.length > 1){
       var prevMatchedIndices = []
       waitingList.forEach((user, i) => {
-        if(connection.prevMatched.indexOf(user.userId) !== -1 && user.currentPartner === ''){
+        if(connection.prevMatched.indexOf(user.userId) !== -1){
           prevMatchedIndices.push(connection.prevMatched.indexOf(user.userId))
         }
       });
@@ -196,6 +210,8 @@ wsServer.on('request', function(request) {
   var stringyIdMsg = JSON.stringify(idMsg);
   connection.sendUTF(stringyIdMsg);
   connection.prevMatched = [];
+  connection.blocksGiven = [];
+  connection.blocksRec = [];
   connection.currentPartner = '';
   connection.noNewMatches = false;
   currentUsers.push(connection);
@@ -232,6 +248,21 @@ wsServer.on('request', function(request) {
         currentUsers.forEach((human, i) => {
           if(human.userId === connection.userId){
             human.currentPartner = '';
+            pairUsers(human);
+          }
+        });
+        break;
+        case "block":
+        //will have to change userId to ip address
+        currentUsers.forEach((human, i) => {
+          if(human.userId === connection.userId){
+            human.currentPartner = '';
+            human.blocksGiven = [...human.blocksGiven, connection.partnerId]
+            pairUsers(human);
+          }
+          if(human.userId === connection.partnerId){
+            human.currentPartner = '';
+            human.blocksGiven = [...human.blocksRec, connection.userId]
             pairUsers(human);
           }
         });

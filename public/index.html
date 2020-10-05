@@ -16,6 +16,8 @@
       <!-- make sure usernames can only be letters and numbers (maybe just use text replace) -->
       <input type="text" id="usernameInput" value="Human"><br>
       <button onclick="connect()">Connect</button>
+      <button onclick="block()" style="
+        margin: 20px auto;">Block</button>
       <button onclick="disconnect()">Disconnect</button>
       <div style='padding-top:9px;'>
         <div id="newPartner">
@@ -50,13 +52,14 @@
       findingPartnerel.style.display = "none";
       var userIdel = document.getElementById('userId');
       var prevUsersArrayel = document.getElementById('prevUsersArray');
+      var connection = null;
+      var partnerName = document.getElementById('partnerName');
+      var myId;
+      var partnerId;
 
       function connect() {
         var usernameInput = document.getElementById('usernameInput').value;
         var username = document.getElementById('userName');
-        var partnerName = document.getElementById('partnerName');
-        var myId;
-        var partnerId;
         var serverUrl;
         var scheme = "ws";
         if (document.location.protocol === "https:") {
@@ -66,12 +69,6 @@
 
         console.log(`Connecting to server: ${serverUrl}`);
         connection = new WebSocket(serverUrl, "json");
-        function sendToServer(msg) {
-          var msgJSON = JSON.stringify(msg);
-
-          console.log("Sending '" + msg.type + "' message: " + msgJSON);
-          connection.send(msgJSON);
-        }
 
         connection.onerror = function(evt) {
           console.dir(evt);
@@ -121,6 +118,10 @@
               findingPartnerel.style.display = "block"
               newPartnerel.style.display = "none"
             break;
+            case "banned":
+              window.location.href = "/banned.html";
+              connection.close();
+            break;
             // Unknown message; output to console for debugging.
             default:
               console.log("Unknown message received:");
@@ -159,6 +160,20 @@
         // });
       }
 
+      function block(){
+        sendToServer({
+          userId: myId,
+          partnerId: partnerId,
+          type: "block"
+        });
+      }
+
+      function sendToServer(msg) {
+        var msgJSON = JSON.stringify(msg);
+
+        console.log("Sending '" + msg.type + "' message: " + msgJSON);
+        connection.send(msgJSON);
+      }
     </script>
   </body>
 </html>
