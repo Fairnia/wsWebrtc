@@ -110,7 +110,7 @@
               newPartnerel.style.display = "block"
               setTimeout(()=>{
                 findNewPartner(myId)
-              },3000)
+              },6000)
               //user1 will always disconnect
               break;
             case "matching":
@@ -166,13 +166,16 @@
           partnerId: partnerId,
           type: "block"
         });
+        console.log('partnerId ', partnerId)
       }
 
       function sendToServer(msg) {
         var msgJSON = JSON.stringify(msg);
 
         console.log("Sending '" + msg.type + "' message: " + msgJSON);
-        connection.send(msgJSON);
+        if(connection){
+          connection.send(msgJSON);
+        }
       }
     </script>
   </body>

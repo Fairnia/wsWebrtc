@@ -1,7 +1,9 @@
 // need to work out banning partners
 // need to work out blocking partners
+// consider refactoring prep for pairing users
+// consider
 // storing names in local storage
-// tested out multiple users at the same time -- looking good so far!!
+// tested out multiple users at the same time -- refactored code a bit see if it still works
 
 // future problems
 // find a way to protect myself from bots
@@ -30,19 +32,13 @@ var waitingList = [];
 var userIds = [];
 
 function connect(user1, user2){
-  //remove users from waitingList
-  //TAKE THIS OUT!!
-  waitingList = waitingList.filter(human => human.userId !== user1.userId && human.userId !== user2.userId);
   //make sure users are still active
-  console.log('hello from connect, here is waitingList', waitingList)
   if(currentUsers.indexOf(user1) === -1){
     pairUsers(user2);
-    console.log('not in currentUsers user1')
     return;
   }
   if(currentUsers.indexOf(user2) === -1){
     pairUsers(user1);
-    console.log('not in currentUsers user2' )
     return;
   }
   user1.prevMatched.push(user2.userId);
@@ -66,103 +62,80 @@ function connect(user1, user2){
       prevMatched: user2.prevMatched
     }
   }
-  var stringyMatchMsg = JSON.stringify(matchMsg);
-  user1.sendUTF(stringyMatchMsg);
-  user2.sendUTF(stringyMatchMsg);
-  console.log('hello from connect', matchMsg.user1, matchMsg.user2)
+  user1.sendUTF(JSON.stringify(matchMsg));
+  user2.sendUTF(JSON.stringify(matchMsg));
 }
 
 function checkInWaitingConn(connection){
   setTimeout(()=>{
-    //does it take a stamp of what the currentPartner situation is at the time? or when passed in the function?
+    console.log('connection.currentPartner from checkInWaitingConn', connection.currentPartner)
     if(connection.currentPartner === ''){
       connection.noNewMatches = true;
-      connection.clown = "it is a clown";
       pairUsers(connection);
     }
   },3000);
 }
 
-function reEnterPairing(connection){
-  console.log('moved into reEnterPairing ', connection.userId);
-  setTimeout(function(){
-    pairUsers(connection);
-  }, 2500);
-}
-
 //pair users
 function pairUsers(connection){
-  if(connection.blocksRec.length > 6){
+  if(connection.blocksReceived.length > 1){
     var bannedMsg = {
       type:"banned"
     }
-    var stringyBannedMsg = JSON.stringify(bannedMsg);
-    connection.sendUTF(stringyBannedMsg);
+    connection.sendUTF(JSON.stringify(bannedMsg));
     return
   }
   var matchingMsg= {
     type:"matching"
   }
-  var stringyMatchingMsg = JSON.stringify(matchingMsg);
-  connection.sendUTF(stringyMatchingMsg);
+  connection.sendUTF(JSON.stringify(matchingMsg));
 
-  //CHANGE TO index of
+//check if user already in waitingList, if not then add
+  console.log('hello rematched ', connection.noNewMatches)
   if(!connection.noNewMatches){
     waitingList = [...waitingList, connection];
+  }else{
   }
 
-  if(waitingList.length < 1){
-    return;
-  }
+  if(waitingList.length < 1) return;
+
   var partner;
+  var prevMatchedIndices = []
   // try to find a new partner
+  // think about putting the noNewMatches and this together
   waitingList.forEach(function loop(user, i){
+    //make a beggars can't be choosers array and bring in code from prevmatched section in order to make one big for each loop instead of several ones
     if(loop.stop) return;
 
     if(user.userId === connection.userId) return;
 
+    if(connection.blocksGiven.indexOf(user.userId) !== -1) return;
+
+    if(user.blocksGiven.indexOf(connection.userId) !== -1) return;
+
+    if(connection.prevMatched.indexOf(user.userId) !== -1) return prevMatchedIndices.push(connection.prevMatched.indexOf(user.userId));
+
     if(connection.prevMatched.indexOf(user.userId) === -1 && connection.currentPartner === '' && user.currentPartner === ''){
-      console.log('hello from not previously matched waitingList' );
-      connection.noNewMatches === false;
+      connection.noNewMatches = false;
       partner = user;
       loop.stop = true;
     }
   });
-  //if can't find new partner, use a previously matched partner
-  if(connection.noNewMatches === true && connection.currentPartner === ''){
-    if(waitingList.length === 1){
-      waitingList.forEach((user) => {
-        if(user.userId !== connection.userId){
-          partner = user;
-        }
-      });
-    }
-    if(waitingList.length > 1){
-      var prevMatchedIndices = []
-      waitingList.forEach((user, i) => {
-        if(connection.prevMatched.indexOf(user.userId) !== -1){
-          prevMatchedIndices.push(connection.prevMatched.indexOf(user.userId))
-        }
-      });
-      //get the partner with the min index
-      var matchMinIndex = Math.min(...prevMatchedIndices);
-      var partnerId = connection.prevMatched.filter((prevMatch, i)=> i === matchMinIndex)[0];
-      //remove from previously matched so next time the partner will have a higher index
-      connection.prevMatched = connection.prevMatched.filter((prevMatch, i)=> i !== matchMinIndex)
-      waitingList.forEach( (user,i)=>{
-        if(user.userId === partnerId){
-          partner = user;
-        }
-      })
-    }
-    if(partner){
-      waitingList.forEach( (user,i)=>{
-        if(user.userId === partnerId){
-          user.prevMatched = user.prevMatched.filter((prevMatch, i)=> prevMatch !== connection.userId)
-        }
-      })
-    }
+  //if can't find new partner and not on the first pairing or repairing, use a previously matched partner
+  if(!partner && connection.noNewMatches === true && connection.currentPartner === ''){
+    //get the prev matched partner with the min index
+    var matchMinIndex = Math.min(...prevMatchedIndices);
+    var partnerId = connection.prevMatched.filter((prevMatch, i)=> i === matchMinIndex)[0];
+    //remove from previously matched so next time the partner will have a higher index
+    connection.prevMatched = connection.prevMatched.filter((prevMatch, i)=> i !== matchMinIndex)
+    waitingList.forEach( (user,i)=>{
+      if(user.userId === partnerId){
+        partner = user;
+        user.prevMatched = user.prevMatched.filter((prevMatch)=> prevMatch !== connection.userId)
+      }
+    })
   }
+  //if a partner was found match, else put in waiting
   if(!partner){
     checkInWaitingConn(connection);
   }else{
@@ -211,7 +184,7 @@ wsServer.on('request', function(request) {
   connection.sendUTF(stringyIdMsg);
   connection.prevMatched = [];
   connection.blocksGiven = [];
-  connection.blocksRec = [];
+  connection.blocksReceived = [];
   connection.currentPartner = '';
   connection.noNewMatches = false;
   currentUsers.push(connection);
@@ -253,16 +226,17 @@ wsServer.on('request', function(request) {
         });
         break;
         case "block":
-        //will have to change userId to ip address
+        //will have to change userId to ip address or mobile device
         currentUsers.forEach((human, i) => {
-          if(human.userId === connection.userId){
+          if(human.userId === msg.userId){
             human.currentPartner = '';
-            human.blocksGiven = [...human.blocksGiven, connection.partnerId]
+            human.blocksGiven = [...human.blocksGiven, msg.partnerId];
             pairUsers(human);
           }
-          if(human.userId === connection.partnerId){
+          if(human.userId === msg.partnerId){
             human.currentPartner = '';
-            human.blocksGiven = [...human.blocksRec, connection.userId]
+            human.blocksReceived = [...human.blocksReceived, msg.userId];
+            console.log('blocked partner is going to be paired again')
             pairUsers(human);
           }
         });
@@ -293,7 +267,7 @@ connection.on('close', function(reason, description) {
       }
     });
 
-    // First, remove the connection from the list of connections.
+    // Remove the connection from the list of connections.
     currentUsers = currentUsers.filter(function(el, idx) {
       if(el.connected){
         return el.connected;
