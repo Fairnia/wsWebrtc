@@ -64,6 +64,13 @@ function connect(user1, user2){
   }
   user1.sendUTF(JSON.stringify(matchMsg));
   user2.sendUTF(JSON.stringify(matchMsg));
+
+  // var videoMatchMsg ={
+  //   type:"video-match",
+  //   id: user1,
+  //   target: user2
+  // }
+  // user1.sendUTF(JSON.stringify(videoMatchMsg));
 }
 
 function checkInWaitingConn(connection){
@@ -91,10 +98,8 @@ function pairUsers(connection){
   connection.sendUTF(JSON.stringify(matchingMsg));
 
 //check if user already in waitingList, if not then add
-  console.log('hello rematched ', connection.noNewMatches)
   if(!connection.noNewMatches){
     waitingList = [...waitingList, connection];
-  }else{
   }
 
   if(waitingList.length < 1) return;
@@ -104,7 +109,6 @@ function pairUsers(connection){
   // try to find a new partner
   // think about putting the noNewMatches and this together
   waitingList.forEach(function loop(user, i){
-    //make a beggars can't be choosers array and bring in code from prevmatched section in order to make one big for each loop instead of several ones
     if(loop.stop) return;
 
     if(user.userId === connection.userId) return;
@@ -143,6 +147,18 @@ function pairUsers(connection){
     connect(connection, partner);
   }
 }
+
+// Sends a message (which is already stringified JSON) to a single
+// user, given their userID. We use this for the WebRTC signaling,
+function sendToOneUser(target, msgString) {
+  currentUsers.forEach((partner) => {
+    console.log('userId ', partner.userId)
+    if (partner.userId === target) {
+      partner.sendUTF(msgString);
+    }
+  });
+}
+
 
 //create conditions for blocking users here
 function originIsAllowed(origin) {
@@ -226,7 +242,7 @@ wsServer.on('request', function(request) {
         });
         break;
         case "block":
-        //will have to change userId to ip address or mobile device
+        // will have to change userId to ip address or mobile device
         currentUsers.forEach((human, i) => {
           if(human.userId === msg.userId){
             human.currentPartner = '';
@@ -236,21 +252,14 @@ wsServer.on('request', function(request) {
           if(human.userId === msg.partnerId){
             human.currentPartner = '';
             human.blocksReceived = [...human.blocksReceived, msg.userId];
-            console.log('blocked partner is going to be paired again')
             pairUsers(human);
           }
         });
         break;
-        case "hang-up":
-        // this means they need to be put back into pairUsers function if they still have a connection
-        // they also need to have to have no currentPartner
-        // by hanging up the person no longer wants to zengreet so they get taken to the thank you page
-        // the other person we need to make
-        msg.name = connect.username;
-        msg.target
-        msg.text = msg.text.replace(/(<([^>]+)>)/ig, "");
-        break;
-
+      }
+      if (msg.target && msg.target !== undefined && msg.target.length !== 0) {
+        var msgString = JSON.stringify(msg);
+        sendToOneUser(msg.target, msgString);
       }
     }
   });//connection on message
@@ -262,6 +271,10 @@ connection.on('close', function(reason, description) {
     // get abandonedPartner back in the game
     currentUsers.forEach((human, i) => {
       if(human.userId === connection.currentPartner){
+        var hangUpMsg = {
+          type:"hang-up"
+        }
+        human.sendUTF(JSON.stringify(hangUpMsg))
         human.currentPartner = '';
         pairUsers(human);
       }
@@ -269,16 +282,11 @@ connection.on('close', function(reason, description) {
 
     // Remove the connection from the list of connections.
     currentUsers = currentUsers.filter(function(el, idx) {
-      if(el.connected){
-        return el.connected;
-      }
+      if(el.connected) return el.connected;
     });
 
-    console.log('currentUsers length', currentUsers)
-
   // Build and output log output for close information.
-  var logMessage = "Connection closed: " + connection.remoteAddress + " (" +
-                   reason;
+  var logMessage = "Connection closed: " + connection.remoteAddress + " (" + reason;
   if (description !== null && description.length !== 0) {
     logMessage += ": " + description;
   }
